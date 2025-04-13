@@ -2,14 +2,14 @@ import logging
 import asyncio
 import os
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
 from aiogram.utils.exceptions import BotBlocked
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
-OPERATORS = [5498505652]  # заміни на реальні ID
+API_TOKEN = os.getenv("7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o")  # Токен повинен бути у .env як API_TOKEN
+OPERATORS = [5498505652]  # Замінити на реальні ID операторів
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -18,12 +18,14 @@ dp = Dispatcher(bot)
 user_state = {}
 operator_reply_mode = {}
 
+TERMS_FILE = "terms_temp.pdf"
+
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
     keyboard.add("📄 Умови використання Temp")
-    await message.answer("👋 Привіт! Щоб почати, поділіться своїм номером або перегляньте умови.", reply_markup=keyboard)
+    await message.answer_photo(photo=open("welcome.jpg", "rb"), caption="✨ Вітаємо у TEMP!", reply_markup=keyboard)
 
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def get_name(message: types.Message):
@@ -34,10 +36,10 @@ async def get_name(message: types.Message):
 async def save_name(message: types.Message):
     user_state[message.from_user.id]['name'] = message.text
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("💬 Зв’язатися з оператором"))
+    keyboard.add(KeyboardButton("💬 Зв'язатися з оператором"))
     await message.answer("✅ Дякуємо! Тепер ви можете написати оператору.", reply_markup=keyboard)
 
-@dp.message_handler(lambda msg: msg.text == "💬 Зв’язатися з оператором")
+@dp.message_handler(lambda msg: msg.text == "💬 Зв'язатися з оператором")
 async def connect_to_operator(message: types.Message):
     user_state[message.from_user.id]['awaiting_response'] = True
     await message.answer("📝 Опишіть вашу проблему нижче. Оператор побачить повідомлення та відповість вам тут.", reply_markup=types.ReplyKeyboardRemove())
@@ -58,10 +60,10 @@ async def forward_to_operator(message: types.Message):
 @dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
 async def show_terms(message: types.Message):
     try:
-        with open("terms.pdf", "rb") as doc:
-            await bot.send_document(message.chat.id, doc, caption="📄 Ось умови використання додатку Temp.")
-    except FileNotFoundError:
-        await message.answer("❌ Файл умов не знайдено. Перевірте наявність 'terms.pdf' у папці.")
+        doc = InputFile(TERMS_FILE)
+        await message.answer_document(doc, caption="📄 Умови використання додатку TEMP")
+    except Exception as e:
+        await message.answer("⚠️ Не вдалося знайти файл умов.")
 
 @dp.message_handler(commands=['reply'])
 async def operator_reply(message: types.Message):
