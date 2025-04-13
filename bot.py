@@ -72,23 +72,27 @@ async def handle_user_message(message: types.Message):
     await message.answer("✅ Ваше повідомлення надіслано. Очікуйте відповідь оператора.")
 
 @dp.message_handler(commands=['reply'])
-async def reply_to_user(message: types.Message):
+async def operator_reply(message: types.Message):
     if not message.reply_to_message:
-        return await message.reply("❗ Відповідай на повідомлення користувача (свайпом)")
+        await message.reply("❗ Щоб відповісти користувачу, відправ команду /reply у відповідь на його повідомлення.")
+        return
 
-    args = message.text.replace("/reply", "").strip()
-    lines = message.reply_to_message.text.splitlines()
-    user_line = next((line for line in lines if line.startswith("🆔")), None)
-    if not user_line:
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        return await message.reply("❗ Вкажіть повідомлення для відповіді.")
+    
+    reply_text = args[1]
+    # Шукаємо user_id зі збереженого повідомлення
+    forwarded = message.reply_to_message.forward_from
+    if not forwarded:
         return await message.reply("❌ Не вдалося визначити користувача.")
 
+    user_id = forwarded.id
     try:
-        user_id = int(user_line.split(":")[1].strip())
-        await bot.send_message(user_id, f"💬 Відповідь оператора:
-{args}")
+        await bot.send_message(user_id, f"💬 Відповідь оператора:\n{reply_text}")
         await message.reply("✅ Відповідь надіслано.")
-    except Exception as e:
-        await message.reply(f"❌ Не вдалося надіслати повідомлення: {e}")
+    except:
+        await message.reply("❌ Не вдалося надіслати повідомлення користувачу.")
 
 @dp.message_handler(lambda message: message.text == "🔚 Завершити розмову")
 async def end_chat(message: types.Message):
