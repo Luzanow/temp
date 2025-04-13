@@ -2,7 +2,7 @@ import logging
 import asyncio
 import os
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.utils.exceptions import BotBlocked
 from dotenv import load_dotenv
 
@@ -18,7 +18,7 @@ dp = Dispatcher(bot)
 user_state = {}
 operator_reply_mode = {}
 
-TERMS_FILE = "terms.pdf"  # Файл повинен бути у тій же директорії
+TERMS_FILE_PATH = "full_temp_terms.pdf"
 
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
@@ -30,7 +30,7 @@ async def start_handler(message: types.Message):
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def get_name(message: types.Message):
     user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    await message.answer("✏️ Введіть своє ім’я:", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("✏️ Введіть своє ім’я:", reply_markup=ReplyKeyboardRemove())
 
 @dp.message_handler(lambda msg: msg.text and msg.from_user.id in user_state and 'name' not in user_state[msg.from_user.id])
 async def save_name(message: types.Message):
@@ -42,7 +42,7 @@ async def save_name(message: types.Message):
 @dp.message_handler(lambda msg: msg.text == "💬 Зв’язатися з оператором")
 async def connect_to_operator(message: types.Message):
     user_state[message.from_user.id]['awaiting_response'] = True
-    await message.answer("📝 Опишіть вашу проблему нижче. Оператор побачить повідомлення та відповість вам тут.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("📝 Опишіть вашу проблему нижче. Оператор побачить повідомлення та відповість вам тут.", reply_markup=ReplyKeyboardRemove())
     await asyncio.sleep(180)
     if user_state[message.from_user.id].get('awaiting_response'):
         await message.answer("⌛ Усі оператори зараз зайняті. Очікуйте, будь ласка. 🙏", reply_markup=back_keyboard())
@@ -52,48 +52,49 @@ async def forward_to_operator(message: types.Message):
     user = user_state[message.from_user.id]
     user['awaiting_response'] = False
     operator_reply_mode[message.from_user.id] = message.chat.id
-    text = f"📩 Запит від <b>{user.get('name')}</b> (<code>{user.get('phone')}</code>):\n{message.text}\n\n👨‍💻 Для відповіді: /reply {message.from_user.id} ваше_повідомлення"
+    text = f"📩 Запит від <b>{user.get('name')}</b> (<code>{user.get('phone')}</code>):\n{message.text}"
     for op in OPERATORS:
-        await bot.send_message(op, text, parse_mode='HTML')
-    await message.answer("📨 Ваше повідомлення надіслано. Очікуйте відповідь оператора. 🙌", reply_markup=end_chat_keyboard())
-
-@dp.message_handler(commands=['reply'])
-async def operator_reply(message: types.Message):
-    args = message.text.split(maxsplit=2)
-    if len(args) < 3:
-        return await message.reply("❗ Формат: /reply <user_id> <повідомлення>")
-    user_id = int(args[1])
-    text = args[2]
-    try:
-        await bot.send_message(user_id, f"💡 Відповідь оператора: {text}", reply_markup=end_chat_keyboard())
-        await message.reply("✅ Відповідь надіслано")
-    except:
-        await message.reply("❌ Не вдалося надіслати повідомлення користувачу")
-
-@dp.message_handler(lambda msg: msg.text == "🔚 Завершити розмову")
-async def end_chat(message: types.Message):
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("💬 Зв’язатися з оператором"))
-    await message.answer("🔕 Розмову завершено. Ви можете звернутись ще раз у будь-який час.", reply_markup=keyboard)
+        await bot.send_message(op, text, parse_mode='HTML', reply_markup=operator_reply_keyboard(message.from_user.id))
+    await message.answer("📨 Ваше повідомлення надіслано. Очікуйте відповідь оператора. 🙌", reply_markup=back_keyboard())
 
 @dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
 async def show_terms(message: types.Message):
     try:
-        doc = InputFile(TERMS_FILE)
-        await bot.send_document(message.chat.id, doc, caption="📎 Умови використання додатка TEMP")
+        await bot.send_document(message.chat.id, open(TERMS_FILE_PATH, 'rb'))
     except Exception as e:
-        await message.answer("⚠️ Файл не знайдено. Зверніться до адміністратора.")
+        await message.answer("❌ Не вдалося знайти документ з умовами використання.")
 
+@dp.callback_query_handler(lambda c: c.data.startswith("reply_"))
+async def operator_quick_reply(callback_query: types.CallbackQuery):
+    target_user_id = int(callback_query.data.split("_")[1])
+    await bot.send_message(callback_query.message.chat.id, f"✏️ Введіть відповідь для користувача {target_user_id}:")
+    operator_reply_mode[callback_query.from_user.id] = target_user_id
+
+@dp.message_handler(lambda message: message.from_user.id in OPERATORS and message.from_user.id in operator_reply_mode)
+async def send_operator_response(message: types.Message):
+    target_user_id = operator_reply_mode[message.from_user.id]
+    try:
+        await bot.send_message(target_user_id, f"💡 Відповідь оператора: {message.text}", reply_markup=back_keyboard())
+        await message.answer("✅ Відповідь надіслано")
+        del operator_reply_mode[message.from_user.id]
+    except:
+        await message.answer("❌ Не вдалося надіслати повідомлення користувачу")
+
+@dp.message_handler(lambda msg: msg.text == "🔙 Повернутись назад")
+async def back_to_menu(message: types.Message):
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("💬 Зв’язатися з оператором"))
+    await message.answer("🔄 Ви повернулись у головне меню.", reply_markup=keyboard)
 
 def back_keyboard():
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton("🔚 Завершити розмову"))
+    keyboard.add(KeyboardButton("🔙 Повернутись назад"))
     return keyboard
 
-def end_chat_keyboard():
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add("🔚 Завершити розмову")
-    return keyboard
+def operator_reply_keyboard(user_id):
+    inline = types.InlineKeyboardMarkup()
+    inline.add(types.InlineKeyboardButton("↩️ Відповісти", callback_data=f"reply_{user_id}"))
+    return inline
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
