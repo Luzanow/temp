@@ -6,7 +6,7 @@ from collections import defaultdict
 
 API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
 ADMIN_ID = 5498505652
-TERMS_FILE = "full_temp_terms.pdf"  # Переконайся, що цей файл у тій же папці!
+TERMS_FILE = "full_temp_terms.pdf"  # Переконайся, що файл є у цій же директорії
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -67,13 +67,11 @@ async def handle_contact_operator(message: types.Message):
     active_chats[uid] = True
     chat_links[ADMIN_ID] = uid
     await message.answer("✍️ Напишіть ваше запитання оператору. Ви можете надсилати кілька повідомлень.", reply_markup=back_keyboard())
-
     await bot.send_message(
         ADMIN_ID,
         f"📩 Запит від <b>{user_state[uid]['name']}</b> (<code>{user_state[uid]['phone']}</code>)",
         parse_mode="HTML"
     )
-
     if uid in timeouts:
         timeouts[uid].cancel()
     timeouts[uid] = asyncio.create_task(auto_timeout(uid))
@@ -84,7 +82,7 @@ async def forward_user_message(message: types.Message):
     uid = message.from_user.id
     user = user_state[uid]
     forward_text = f"📩 <b>{user['name']}</b>: {message.text}"
-    await bot.send_message(ADMIN_ID, forward_text, parse_mode="HTML", reply_to_message_id=None)
+    await bot.send_message(ADMIN_ID, forward_text, parse_mode="HTML")
 
 # Відповідь оператора
 @dp.message_handler(lambda msg: msg.reply_to_message and msg.from_user.id == ADMIN_ID)
@@ -106,7 +104,6 @@ async def finish_chat(message: types.Message):
     chat_links.pop(ADMIN_ID, None)
     if uid in timeouts:
         timeouts[uid].cancel()
-
     await message.answer("✅ Розмову завершено.", reply_markup=chat_keyboard())
     await bot.send_message(ADMIN_ID, f"❌ Користувач {user_state[uid]['name']} завершив розмову.")
 
