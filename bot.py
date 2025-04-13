@@ -1,14 +1,14 @@
 import logging
 import asyncio
 import os
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.exceptions import BotBlocked
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_TOKEN = os.getenv("7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o")  # Встанови цей токен у .env файлі
+API_TOKEN = os.getenv("7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o") or "7862608221:AAHqNizmx3hOXmjVOmzdnwQCenlXHTWX8OA"
 OPERATORS = [5498505652]  # Замінити на реальні ID
 
 logging.basicConfig(level=logging.INFO)
