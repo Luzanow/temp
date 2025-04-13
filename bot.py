@@ -37,3 +37,7 @@ async def forward_to_operator(message: types.Message):
             await bot.send_message(op_id, f"📩 Запит від @{message.from_user.username or 'Користувач'}: {message.text}")
         except BotBlocked:
             pass
+from aiogram import executor
+
+if __name__ == "__main__":
+    executor.start_polling(dp, skip_updates=True)
