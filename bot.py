@@ -4,7 +4,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.exceptions import BotBlocked
 import asyncio
 
-API_TOKEN = '7862608221:AAEixkRNQwhkBVv0sLGevAdrcA9egHr2oo'
+API_TOKEN = '7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o'
 OPERATORS = [5498505652]  # ID операторів (можна додати більше)
 
 logging.basicConfig(level=logging.INFO)
