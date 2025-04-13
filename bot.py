@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_TOKEN = os.getenv("7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o")
-OPERATORS = [5498505652]  # заміни на реальні ID
+API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
+OPERATORS = [5498505652]
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -99,3 +99,4 @@ def back_keyboard():
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
+
