@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
-OPERATORS = [5498505652]
+OPERATORS = [5498505652]  # заміни на реальні ID
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -17,18 +17,6 @@ dp = Dispatcher(bot)
 
 user_state = {}
 operator_reply_mode = {}
-
-TERMS_TEXT = """
-📄 <b>УМОВИ ВИКОРИСТАННЯ ДОДАТКА TEMP</b>
-
-Останнє оновлення: 7.03.2025
-
-1. Temp — це платформа для пошуку роботи на карті. Реєстрація та використання безкоштовні.
-2. Ви погоджуєтесь надавати лише правдиву інформацію. Заборонений спам, шахрайство та реклама.
-3. Temp не несе відповідальності за зміст оголошень або домовленості між сторонами.
-4. Ми можемо змінювати умови без попередження. Користуючись додатком — ви погоджуєтесь із ними.
-5. Контакт: tempsuport@gmail.com
-"""
 
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
@@ -69,7 +57,11 @@ async def forward_to_operator(message: types.Message):
 
 @dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
 async def show_terms(message: types.Message):
-    await message.answer(TERMS_TEXT, parse_mode='HTML')
+    try:
+        with open("terms.pdf", "rb") as doc:
+            await bot.send_document(message.chat.id, doc, caption="📄 Ось умови використання додатку Temp.")
+    except FileNotFoundError:
+        await message.answer("❌ Файл умов не знайдено. Перевірте наявність 'terms.pdf' у папці.")
 
 @dp.message_handler(commands=['reply'])
 async def operator_reply(message: types.Message):
@@ -99,4 +91,3 @@ def back_keyboard():
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
-
