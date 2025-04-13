@@ -1,12 +1,11 @@
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
-from collections import defaultdict
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils.exceptions import BotBlocked
 
 API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
-ADMIN_ID = 5498505652
-TERMS_FILE = "full_temp_terms.pdf"  # Переконайся, що файл є у цій же директорії
+ADMIN_CHAT_ID = 5498505652
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -14,108 +13,73 @@ dp = Dispatcher(bot)
 
 user_state = {}
 active_chats = {}
-chat_links = {}
-timeouts = {}
 
-# Кнопки
-def start_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
-    kb.add("📄 Умови використання Temp")
-    return kb
+TERMS_FILE_PATH = "full_temp_terms.pdf"
 
-def chat_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("💬 Зв’язатися з оператором"))
-    return kb
-
-def back_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🔚 Завершити розмову"))
-    return kb
-
-# Старт
 @dp.message_handler(commands=['start'])
-async def handle_start(message: types.Message):
-    await message.answer("👋 Вітаємо у TEMP! Поділіться номером або перегляньте умови використання.", reply_markup=start_keyboard())
+async def start_handler(message: types.Message):
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
+    keyboard.add("📄 Умови використання Temp")
+    await message.answer("👋 Привіт! Щоб почати, поділіться своїм номером або перегляньте умови.", reply_markup=keyboard)
 
-# Контакт
 @dp.message_handler(content_types=types.ContentType.CONTACT)
-async def handle_contact(message: types.Message):
+async def get_name(message: types.Message):
     user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    await message.answer("✏️ Введіть ваше ім’я:", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("✏️ Введіть своє ім’я:", reply_markup=types.ReplyKeyboardRemove())
 
-# Ім’я
-@dp.message_handler(lambda msg: msg.from_user.id in user_state and 'name' not in user_state[msg.from_user.id])
-async def handle_name(message: types.Message):
+@dp.message_handler(lambda msg: msg.text and msg.from_user.id in user_state and 'name' not in user_state[msg.from_user.id])
+async def save_name(message: types.Message):
     user_state[message.from_user.id]['name'] = message.text
-    await message.answer("✅ Дякуємо! Тепер ви можете зв’язатися з оператором.", reply_markup=chat_keyboard())
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("💬 Зв’язатися з оператором"))
+    await message.answer("✅ Дякуємо! Тепер ви можете зв’язатися з оператором.", reply_markup=keyboard)
 
-# Умови використання
-@dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
-async def handle_terms(message: types.Message):
-    try:
-        await message.answer_document(InputFile(TERMS_FILE))
-    except Exception as e:
-        await message.answer("⚠️ Не вдалося надіслати PDF. Перевір правильність шляху до файлу.")
-        logging.error(e)
-
-# Зв’язок з оператором
 @dp.message_handler(lambda msg: msg.text == "💬 Зв’язатися з оператором")
-async def handle_contact_operator(message: types.Message):
-    uid = message.from_user.id
-    active_chats[uid] = True
-    chat_links[ADMIN_ID] = uid
-    await message.answer("✍️ Напишіть ваше запитання оператору. Ви можете надсилати кілька повідомлень.", reply_markup=back_keyboard())
-    await bot.send_message(
-        ADMIN_ID,
-        f"📩 Запит від <b>{user_state[uid]['name']}</b> (<code>{user_state[uid]['phone']}</code>)",
-        parse_mode="HTML"
+async def connect_to_operator(message: types.Message):
+    user_state[message.from_user.id]['active'] = True
+    active_chats[message.from_user.id] = {'operator': ADMIN_CHAT_ID}
+    text = (
+        f"📩 Запит від {user_state[message.from_user.id]['name']} (user_id={message.from_user.id}):\n"
+        f"Телефон: {user_state[message.from_user.id]['phone']}\n"
+        f"🔁 Відповідайте на це повідомлення через Reply, щоб надіслати відповідь."
     )
-    if uid in timeouts:
-        timeouts[uid].cancel()
-    timeouts[uid] = asyncio.create_task(auto_timeout(uid))
+    await bot.send_message(ADMIN_CHAT_ID, text)
+    await message.answer("📨 Ваше повідомлення надіслано. Очікуйте відповідь оператора.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("🔚 Завершити розмову"))
 
-# Повідомлення від користувача
-@dp.message_handler(lambda msg: active_chats.get(msg.from_user.id))
-async def forward_user_message(message: types.Message):
-    uid = message.from_user.id
-    user = user_state[uid]
-    forward_text = f"📩 <b>{user['name']}</b>: {message.text}"
-    await bot.send_message(ADMIN_ID, forward_text, parse_mode="HTML")
-
-# Відповідь оператора
-@dp.message_handler(lambda msg: msg.reply_to_message and msg.from_user.id == ADMIN_ID)
-async def operator_reply(message: types.Message):
-    uid = chat_links.get(ADMIN_ID)
-    if not uid:
-        return await message.reply("❌ Немає активного діалогу з користувачем.")
+@dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
+async def show_terms(message: types.Message):
     try:
-        await bot.send_message(uid, f"💬 Відповідь оператора: {message.text}", reply_markup=back_keyboard())
-    except Exception as e:
-        logging.error(e)
-        await message.reply("❌ Не вдалося надіслати повідомлення користувачу.")
+        with open(TERMS_FILE_PATH, "rb") as f:
+            await message.answer_document(f)
+    except:
+        await message.answer("❌ Не вдалося відкрити файл умов користування.")
 
-# Завершення розмови
 @dp.message_handler(lambda msg: msg.text == "🔚 Завершити розмову")
-async def finish_chat(message: types.Message):
-    uid = message.from_user.id
-    active_chats.pop(uid, None)
-    chat_links.pop(ADMIN_ID, None)
-    if uid in timeouts:
-        timeouts[uid].cancel()
-    await message.answer("✅ Розмову завершено.", reply_markup=chat_keyboard())
-    await bot.send_message(ADMIN_ID, f"❌ Користувач {user_state[uid]['name']} завершив розмову.")
+async def end_chat(message: types.Message):
+    user_state[message.from_user.id]['active'] = False
+    await message.answer("✅ Розмову завершено. Дякуємо!", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("💬 Зв’язатися з оператором"))
+    await bot.send_message(ADMIN_CHAT_ID, f"🔔 Користувач {message.from_user.id} завершив розмову.")
 
-# Автоматичне завершення
-async def auto_timeout(user_id):
-    await asyncio.sleep(600)
-    if active_chats.get(user_id):
-        active_chats.pop(user_id)
-        chat_links.pop(ADMIN_ID, None)
-        await bot.send_message(user_id, "⌛ Час очікування перевищено. Розмову завершено.", reply_markup=chat_keyboard())
-        await bot.send_message(ADMIN_ID, f"❌ Розмова з {user_state[user_id]['name']} завершена через таймаут.")
+@dp.message_handler(lambda msg: msg.reply_to_message and "user_id=" in msg.reply_to_message.text)
+async def operator_reply(message: types.Message):
+    try:
+        lines = message.reply_to_message.text.split('\n')
+        for line in lines:
+            if "user_id=" in line:
+                user_id = int(line.split("user_id=")[-1].split(")")[0])
+                break
+        else:
+            return await message.reply("❗ Не вдалося визначити користувача для відповіді.")
 
-# Запуск
-if __name__ == "__main__":
+        if user_state.get(user_id, {}).get('active'):
+            await bot.send_message(user_id, f"💬 Відповідь оператора: {message.text}")
+            await message.reply("✅ Відповідь надіслано.")
+        else:
+            await message.reply("⚠️ Користувач завершив розмову або недоступний.")
+
+    except Exception as e:
+        await message.reply(f"❌ Помилка: {e}")
+
+if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
