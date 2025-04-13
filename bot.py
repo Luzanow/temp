@@ -19,8 +19,7 @@ user_state = {}
 async def start_handler(message: types.Message):
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(KeyboardButton("🔧 Зв’язатися з оператором"))
-    await message.answer(f"Вітаємо, {message.from_user.first_name}!")
-Як можемо допомогти?", reply_markup=keyboard)
+    await message.answer("Як можемо допомогти?", reply_markup=keyboard)
 
 # Коли користувач натискає на кнопку
 @dp.message_handler(lambda message: message.text == "🔧 Зв’язатися з оператором")
