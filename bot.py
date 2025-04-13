@@ -57,22 +57,23 @@ async def handle_user_message(message: types.Message):
     chat = active_chats.get(uid)
     if chat:
         text = f"📨 Повідомлення від {user_data[uid]['name']} ({user_data[uid]['phone']}):\n{message.text}"
-        await bot.send_message(chat["operator"], text)
+        msg_sent = await bot.send_message(chat["operator"], text)
+        # Save the original user's ID in reply_to_message_id
+        active_chats["last_message_id"] = msg_sent.message_id
+        active_chats["last_user"] = uid
         chat["last_message"] = asyncio.get_event_loop().time()
         await message.answer("✅ Повідомлення надіслано оператору.")
 
-@dp.message_handler(commands=['reply'])
-async def operator_reply(message: types.Message):
-    parts = message.text.split(maxsplit=2)
-    if len(parts) < 3:
-        return await message.answer("⚠️ Формат: /reply <user_id> <текст>")
-    uid = int(parts[1])
-    text = parts[2]
+@dp.message_handler(lambda message: message.reply_to_message and message.chat.id == ADMIN_ID)
+async def reply_by_operator(message: types.Message):
+    uid = active_chats.get("last_user")
+    if not uid:
+        return await message.answer("❌ Не вдалося визначити користувача.")
     try:
-        await bot.send_message(uid, f"💬 Відповідь оператора: {text}")
-        await message.answer("✅ Повідомлення надіслано користувачу.")
+        await bot.send_message(uid, f"💬 Відповідь оператора: {message.text}")
+        await message.answer("✅ Відповідь надіслано.")
     except Exception as e:
-        await message.answer(f"❌ Не вдалося надіслати: {e}")
+        await message.answer(f"❌ Помилка надсилання: {e}")
 
 @dp.message_handler(commands=['end'])
 async def end_chat(message: types.Message):
@@ -91,7 +92,7 @@ async def end_chat(message: types.Message):
 async def auto_end_chats():
     while True:
         now = asyncio.get_event_loop().time()
-        expired = [uid for uid, data in active_chats.items() if now - data["last_message"] > 600]
+        expired = [uid for uid, data in active_chats.items() if isinstance(uid, int) and now - data["last_message"] > 600]
         for uid in expired:
             try:
                 await bot.send_message(uid, "⌛ Розмову завершено через неактивність.")
