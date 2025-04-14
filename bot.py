@@ -9,23 +9,23 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
-OPERATORS = [5498505652]  # оператори
+OPERATORS = [5498505652]  # заміни на реальні ID
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 user_state = {}
-active_chats = {}
+operator_reply_mode = {}
 
-TERMS_FILE_ID = "BQACAgIAAxkBAAIBQ2Yh7X9kS9Kov3DCeW8iSmo3AAH0TAACMwEAAmMRSEsRNUJ6iGkX7TQE"  # реальний File_ID
+TERMS_FILE_PATH = "full_temp_terms.pdf"
 
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
     keyboard.add("📄 Умови використання Temp")
-    await message.answer("👋 Привіт! Щоб почати, поділіться номером або перегляньте умови.", reply_markup=keyboard)
+    await message.answer("👋 Привіт! Щоб почати, поділіться своїм номером або перегляньте умови.", reply_markup=keyboard)
 
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def get_name(message: types.Message):
@@ -41,59 +41,58 @@ async def save_name(message: types.Message):
 
 @dp.message_handler(lambda msg: msg.text == "💬 Зв’язатися з оператором")
 async def connect_to_operator(message: types.Message):
-    user_id = message.from_user.id
-    active_chats[user_id] = {'operator': None, 'last_activity': asyncio.get_event_loop().time()}
-    user_state[user_id]['chatting'] = True
-    await message.answer("📝 Опишіть вашу проблему. Оператор відповість вам тут.", reply_markup=types.ReplyKeyboardRemove())
+    user_state[message.from_user.id]['chat_active'] = True
+    await message.answer("📝 Опишіть вашу проблему нижче. Оператор побачить повідомлення та відповість вам тут.", reply_markup=types.ReplyKeyboardRemove())
+    await asyncio.sleep(600)
+    if user_state.get(message.from_user.id, {}).get('chat_active'):
+        await message.answer("⌛ Усі оператори зараз зайняті. Очікуйте, будь ласка. 🙏", reply_markup=end_chat_keyboard())
 
 @dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
-async def show_terms(message: types.Message):
-    await bot.send_document(message.chat.id, TERMS_FILE_ID)
+async def show_terms_file(message: types.Message):
+    if os.path.exists(TERMS_FILE_PATH):
+        await message.answer_document(open(TERMS_FILE_PATH, "rb"))
+    else:
+        await message.answer("❌ Не вдалося знайти файл із умовами використання.")
 
 @dp.message_handler(lambda msg: msg.text == "🔚 Завершити розмову")
 async def end_chat(message: types.Message):
-    user_id = message.from_user.id
-    if active_chats.get(user_id):
-        op_id = active_chats[user_id]['operator']
-        await message.answer("🔕 Розмову завершено.", reply_markup=start_keyboard())
-        if op_id:
-            await bot.send_message(op_id, f"❌ Користувач {user_id} завершив розмову")
-        del active_chats[user_id]
-        user_state[user_id]['chatting'] = False
+    user_state[message.from_user.id]['chat_active'] = False
+    await message.answer("🔒 Розмову завершено. Дякуємо за звернення!", reply_markup=start_keyboard())
+    for op in OPERATORS:
+        await bot.send_message(op, f"❌ Користувач @{message.from_user.username or 'анонім'} завершив розмову.")
 
-@dp.message_handler(lambda message: user_state.get(message.from_user.id, {}).get('chatting'))
-async def forward_to_operator(message: types.Message):
-    user_id = message.from_user.id
-    for op_id in OPERATORS:
-        await bot.forward_message(op_id, from_chat_id=user_id, message_id=message.message_id)
-        await bot.send_message(op_id, f"👆 Повідомлення від користувача {user_id}. Щоб відповісти, напишіть команду /reply у відповідь на це повідомлення.")
+@dp.message_handler(lambda msg: user_state.get(msg.from_user.id, {}).get('chat_active'))
+async def handle_user_message(message: types.Message):
+    user = user_state[message.from_user.id]
+    for op in OPERATORS:
+        try:
+            await bot.send_message(op, f"📨 Повідомлення від @{message.from_user.username or 'анонім'}:
+{message.text}\n\nНатисніть Reply, щоб відповісти.", reply_to_message_id=message.message_id)
+        except BotBlocked:
+            logging.warning(f"Оператор {op} заблокував бота")
+    await message.answer("✅ Повідомлення надіслано. Очікуйте відповідь.", reply_markup=end_chat_keyboard())
 
-@dp.message_handler(commands=['reply'])
-async def operator_reply(message: types.Message):
-    if not message.reply_to_message or not message.reply_to_message.forward_from:
-        return await message.reply("❗ Скористайтесь командою /reply у відповідь на переслане повідомлення.")
-
-    user_id = message.reply_to_message.forward_from.id
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        return await message.reply("❗ Введіть текст повідомлення після команди /reply")
-    reply_text = args[1]
+@dp.message_handler(lambda msg: msg.chat.id in OPERATORS and msg.reply_to_message)
+async def handle_operator_reply(message: types.Message):
     try:
+        reply_text = message.reply_to_message.text
+        user_id = int(reply_text.split("@")[1].split()[0])
         await bot.send_message(user_id, f"💬 Відповідь оператора:
-{reply_text}", reply_markup=end_chat_keyboard())
-        await message.reply("✅ Відповідь надіслано")
-    except:
-        await message.reply("❌ Не вдалося надіслати повідомлення користувачу")
+{message.text}")
+    except Exception as e:
+        logging.error(f"Не вдалося визначити користувача: {e}")
+        await message.answer("❌ Не вдалося надіслати повідомлення користувачу")
 
 def start_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("💬 Зв’язатися з оператором")
-    return kb
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
+    keyboard.add("📄 Умови використання Temp")
+    return keyboard
 
 def end_chat_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🔚 Завершити розмову")
-    return kb
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add("🔚 Завершити розмову")
+    return keyboard
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
