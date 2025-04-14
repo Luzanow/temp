@@ -5,8 +5,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
 from collections import defaultdict
 import os
 
-API_TOKEN = "7import logging
-import asyncio
+API_TOKEN = "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
+
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputFile
 from collections import defaultdict
