@@ -42,6 +42,7 @@ async def cmd_start(message: types.Message):
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def contact_handler(message: types.Message):
     user_state[message.from_user.id] = {'phone': message.contact.phone_number}
+    # Переходимо до наступного етапу після того, як номер поділений
     await message.answer("🖊 Введіть ваше ім’я:", reply_markup=types.ReplyKeyboardRemove())
 
 # Ім'я
@@ -101,6 +102,9 @@ async def operator_reply(message: types.Message):
             parse_mode="HTML",
             reply_markup=waiting_keyboard()
         )
+
+        # Повідомлення користувачу про те, що оператор приєднався
+        await bot.send_message(target_user, "🎉 Оператор приєднався до чату! Ви можете почати спілкування.")
     else:
         await message.reply("⚠️ Не вдалося знайти користувача для відповіді.")
 
