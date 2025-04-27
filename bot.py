@@ -33,11 +33,6 @@ def operator_accept_keyboard(user_id):
     kb.add(InlineKeyboardButton("✅ Взяти в роботу", callback_data=f"accept_{user_id}"))
     return kb
 
-def operator_end_keyboard():
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("🔚 Завершити розмову", callback_data="end_chat"))
-    return kb
-
 # /start
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
@@ -45,18 +40,23 @@ async def start_handler(message: types.Message):
 
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def handle_contact(message: types.Message):
-    await message.answer("✏️ Напишіть своє ім'я:", reply_markup=ReplyKeyboardRemove())
-    active_chats[message.from_user.id] = {'phone': message.contact.phone_number, 'name': None, 'operator': None}
+    await message.answer("✏️ Введіть ваше ім'я:", reply_markup=ReplyKeyboardRemove())
+    active_chats[message.from_user.id] = {'phone': message.contact.phone_number, 'name': None, 'operator': None, 'question': None}
 
 @dp.message_handler(lambda msg: msg.from_user.id in active_chats and active_chats[msg.from_user.id]['name'] is None)
 async def handle_name(message: types.Message):
     active_chats[message.from_user.id]['name'] = message.text
+    await message.answer("📝 Опишіть коротко вашу проблему або питання:")
+
+@dp.message_handler(lambda msg: msg.from_user.id in active_chats and active_chats[msg.from_user.id]['question'] is None and active_chats[msg.from_user.id]['name'] is not None)
+async def handle_question(message: types.Message):
+    active_chats[message.from_user.id]['question'] = message.text
     await message.answer("👋 Дякуємо! Очікуйте відповідь оператора. 🚀", reply_markup=end_chat_keyboard())
 
     user = active_chats[message.from_user.id]
     await bot.send_message(
         ADMIN_CHAT_ID,
-        f"🆕 Нове звернення!\nІм'я: {user['name']}\nТелефон: {user['phone']}",
+        f"🆕 Нове звернення!\n\nІм'я: {user['name']}\nТелефон: {user['phone']}\nПитання: {user['question']}",
         reply_markup=operator_accept_keyboard(message.from_user.id)
     )
 
@@ -66,7 +66,7 @@ async def handle_name(message: types.Message):
 async def wait_operator_response(user_id):
     await asyncio.sleep(300)
     if user_id in active_chats and active_chats[user_id]['operator'] is None:
-        await bot.send_message(user_id, "😔 Вибачте, всі оператори зайняті. Ми обов'язково скоро з вами зв'яжемось! ❤️")
+        await bot.send_message(user_id, "😔 Вибачте, всі оператори зараз зайняті. Ми обов'язково скоро з вами зв'яжемось! ❤️")
         waiting_users.pop(user_id, None)
 
 @dp.callback_query_handler(lambda c: c.data.startswith('accept_'))
@@ -75,23 +75,11 @@ async def accept_chat(callback_query: types.CallbackQuery):
     active_chats[user_id]['operator'] = ADMIN_CHAT_ID
 
     await bot.send_message(user_id, f"🎉 Оператор {OPERATOR_NAME} приєднався до чату! Можете ставити питання.")
-    await callback_query.message.edit_text(f"✅ Ви прийняли звернення від {active_chats[user_id]['name']}", reply_markup=operator_end_keyboard())
+    await callback_query.message.edit_text(f"✅ Ви прийняли звернення від {active_chats[user_id]['name']}")
 
     if user_id in waiting_users:
         waiting_users[user_id].cancel()
         waiting_users.pop(user_id, None)
-
-@dp.callback_query_handler(lambda c: c.data == 'end_chat')
-async def operator_end_chat(callback_query: types.CallbackQuery):
-    user_id = None
-    for uid, chat in active_chats.items():
-        if chat.get('operator') == ADMIN_CHAT_ID:
-            user_id = uid
-            break
-    if user_id:
-        await bot.send_message(user_id, "🔚 Дякуємо за звернення! Гарного дня! 🌟", reply_markup=ReplyKeyboardRemove())
-        await callback_query.message.edit_text("✅ Ви завершили розмову. Можете прийняти новий чат.")
-        active_chats.pop(user_id, None)
 
 @dp.message_handler(lambda msg: msg.from_user.id == ADMIN_CHAT_ID)
 async def operator_messages(message: types.Message):
