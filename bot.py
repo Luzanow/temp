@@ -2,7 +2,7 @@ import logging
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, types, executor
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,9 +28,14 @@ def waiting_keyboard():
     kb.add(KeyboardButton("🔚 Завершити розмову"))
     return kb
 
-def operator_accept_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("✅ Прийняти цю розмову"))
+def operator_accept_keyboard(user_id):
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(f"✅ Прийняти розмову від {user_state[user_id]['name']}", callback_data=f"accept_{user_id}"))
+    return kb
+
+def operator_end_keyboard():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("🔚 Завершити розмову", callback_data="end_chat"))
     return kb
 
 # Старт
@@ -62,7 +67,7 @@ async def question_handler(message: types.Message):
     user_state[message.from_user.id]['question'] = message.text
     user_id = message.from_user.id
 
-    # Повідомлення оператору
+    # Повідомлення оператору з кнопкою "Прийняти розмову"
     for op_id in OPERATORS:
         await bot.send_message(
             op_id,
@@ -72,7 +77,7 @@ async def question_handler(message: types.Message):
             f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
             "Натисніть на кнопку нижче, щоб прийняти цю розмову ⬇️",
             parse_mode="HTML",
-            reply_markup=operator_accept_keyboard()
+            reply_markup=operator_accept_keyboard(user_id)
         )
 
     await message.answer(
@@ -89,15 +94,19 @@ async def waiting_timeout(user_id):
         await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом!")
 
 # Оператор приймає розмову
-@dp.message_handler(lambda message: message.text == "✅ Прийняти цю розмову" and message.from_user.id in OPERATORS)
-async def accept_chat(message: types.Message):
-    user_id = message.reply_to_message.from_user.id
+@dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
+async def accept_chat(callback_query: types.CallbackQuery):
+    user_id = int(callback_query.data.split("_")[1])  # Отримуємо ID користувача з callback data
+    operator_id = callback_query.from_user.id
+    
     # Повідомлення користувачу про те, що оператор приєднався
     await bot.send_message(user_id, f"🎉 Оператор приєднався до чату! Починайте спілкуватися!")
-    active_chats[user_id] = {'operator_id': message.from_user.id}
+    active_chats[user_id] = {'operator_id': operator_id}
 
     # Повідомлення оператору
-    await message.answer("💬 Ви тепер у чаті з користувачем.", reply_markup=waiting_keyboard())
+    await bot.send_message(operator_id, f"💬 Ви тепер у чаті з користувачем {user_state[user_id]['name']}. Починайте спілкуватися.")
+    await callback_query.answer()
+    await callback_query.message.edit_text("💬 Ви прийняли цю розмову.", reply_markup=operator_end_keyboard())
 
 # Оператор відповідає користувачу
 @dp.message_handler(lambda m: m.from_user.id in active_chats)
@@ -115,18 +124,16 @@ async def wait_for_operator(message: types.Message):
     await message.answer("⏳ Чекайте, поки оператор приєднається до чату.")
 
 # Завершення чату
-@dp.message_handler(lambda m: m.text == "🔚 Завершити розмову")
-async def end_chat(message: types.Message):
-    user_id = message.from_user.id
+@dp.callback_query_handler(lambda c: c.data == "end_chat")
+async def end_chat(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
 
     if user_id in active_chats:
         op_id = active_chats[user_id]['operator_id']
         await bot.send_message(op_id, f"🔔 Користувач {user_state[user_id]['name']} завершив розмову.")
         active_chats.pop(user_id, None)
-        await message.answer(
-            "✅ Розмову завершено. Натисніть /start, щоб почати нову консультацію.",
-            reply_markup=start_keyboard()
-        )
+        await bot.send_message(user_id, "✅ Розмову завершено. Натисніть /start, щоб почати нову консультацію.")
+        await callback_query.answer()
 
     elif user_id in [chat.get('operator_id') for chat in active_chats.values()]:
         for uid, chat in list(active_chats.items()):
@@ -134,10 +141,7 @@ async def end_chat(message: types.Message):
                 await bot.send_message(uid, "🔔 Оператор завершив розмову.")
                 active_chats.pop(uid, None)
 
-        await message.answer(
-            "✅ Ви завершили обслуговування клієнта.",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
+        await bot.send_message(user_id, "✅ Ви завершили обслуговування клієнта.")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
