@@ -28,6 +28,11 @@ def waiting_keyboard():
     kb.add(KeyboardButton("🔚 Завершити розмову"))
     return kb
 
+def operator_accept_keyboard():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("✅ Прийняти розмову"))
+    return kb
+
 # Старт
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
@@ -66,7 +71,8 @@ async def question_handler(message: types.Message):
             f"📞 Телефон: <code>{user_state[user_id]['phone']}</code>\n\n"
             f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
             "Натисніть у відповіді, щоб почати діалог ⬇️",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=operator_accept_keyboard()
         )
 
     await message.answer(
