@@ -96,6 +96,7 @@ async def accept_chat(message: types.Message):
     await bot.send_message(user_id, f"🎉 Оператор приєднався до чату! Починайте спілкуватися!")
     active_chats[user_id] = {'operator_id': message.from_user.id}
 
+    # Повідомлення оператору
     await message.answer("💬 Ви тепер у чаті з користувачем.", reply_markup=waiting_keyboard())
 
 # Оператор відповідає користувачу
