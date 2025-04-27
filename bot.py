@@ -55,6 +55,8 @@ async def contact_handler(message: types.Message):
         user_state[message.from_user.id] = {'phone': message.contact.phone_number}
         await message.delete_reply_markup()  # Видаляємо кнопку після того, як номер надіслано
         await message.answer("🖊 Введіть ваше ім’я:")
+    else:
+        await message.answer("⚠️ Не вдалося отримати номер телефону. Спробуйте ще раз.")
 
 # Ім'я
 @dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
