@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_TOKEN = os.getenv("BOT_TOKEN")
-OPERATORS = [5498505652]
+OPERATORS = [5498505652]  # Список операторів
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode="HTML")
@@ -51,10 +51,10 @@ async def cmd_start(message: types.Message):
 # Контакт
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def contact_handler(message: types.Message):
-    user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    # Зникає кнопка "Поділитись номером"
-    await message.delete_reply_markup()  # Видаляємо кнопку після того, як номер надіслано
-    await message.answer("🖊 Введіть ваше ім’я:")
+    if message.contact:
+        user_state[message.from_user.id] = {'phone': message.contact.phone_number}
+        await message.delete_reply_markup()  # Видаляємо кнопку після того, як номер надіслано
+        await message.answer("🖊 Введіть ваше ім’я:")
 
 # Ім'я
 @dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
