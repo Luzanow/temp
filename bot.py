@@ -20,7 +20,7 @@ active_chats = {}
 # Клавіатури
 def start_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Поділитися номером телефону", request_contact=True))
+    kb.add(KeyboardButton("📱 Поділитись номером телефону", request_contact=True))
     return kb
 
 def waiting_keyboard():
@@ -31,6 +31,11 @@ def waiting_keyboard():
 def operator_accept_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("✅ Прийняти розмову"))
+    return kb
+
+def operator_finish_keyboard():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("🔚 Завершити діалог"))
     return kb
 
 # Старт
@@ -49,6 +54,9 @@ async def cmd_start(message: types.Message):
 async def contact_handler(message: types.Message):
     user_state[message.from_user.id] = {'phone': message.contact.phone_number}
     await message.answer("🖊 Введіть ваше ім’я:")
+
+    # Приховуємо кнопку "Поділитись номером"
+    await message.delete_reply_markup()
 
 # Ім'я
 @dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
@@ -101,7 +109,7 @@ async def operator_accept(message: types.Message):
     await bot.send_message(
         message.from_user.id,
         f"🔔 Ви почали розмову з користувачем {user_state[user_id]['name']}.",
-        reply_markup=waiting_keyboard()
+        reply_markup=operator_finish_keyboard()
     )
 
 # Оператор відповідає користувачу
