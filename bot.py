@@ -1,143 +1,63 @@
-import logging
-import os
-import asyncio
-from aiogram import Bot, Dispatcher, types, executor
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from dotenv import load_dotenv
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-load_dotenv()
-
-API_TOKEN = os.getenv("BOT_TOKEN")
-OPERATORS = [5498505652]
-
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN, parse_mode="HTML")
-dp = Dispatcher(bot)
-
-user_state = {}
-active_chats = {}
-
-# Клавіатури
-def start_keyboard():
+# Створення клавіатури для оператора
+def operator_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Надіслати номер телефону", request_contact=True))
+    kb.add(KeyboardButton("✅ Прийняти діалог"))
+    kb.add(KeyboardButton("🔙 Завершити розмову"))
     return kb
 
-def waiting_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🔚 Завершити розмову"))
-    return kb
-
-# Старт
-@dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    user_state.pop(message.from_user.id, None)
-    await message.answer(
-        "👋 Вітаємо у службі підтримки <b>TEMP</b>!\n\n"
-        "Будь ласка, надішліть свій номер телефону, натиснувши кнопку нижче 👇",
-        reply_markup=start_keyboard()
-    )
-
-# Контакт
-@dp.message_handler(content_types=types.ContentType.CONTACT)
-async def contact_handler(message: types.Message):
-    user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    await message.answer("🖊 Введіть ваше ім’я:")
-
-# Ім'я
-@dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
-async def name_handler(message: types.Message):
-    user_state[message.from_user.id]['name'] = message.text
-    await message.answer("📝 Коротко опишіть вашу проблему або запитання:")
-
-# Питання
-@dp.message_handler(lambda m: m.from_user.id in user_state and 'question' not in user_state[m.from_user.id])
-async def question_handler(message: types.Message):
-    user_state[message.from_user.id]['question'] = message.text
+# Старт розмови з користувачем (Користувач натискає кнопку "Зв'язатись з оператором")
+@dp.message_handler(lambda msg: msg.text == "💬 Зв’язатися з оператором")
+async def connect_to_operator(message: types.Message):
     user_id = message.from_user.id
+    user = user_state.get(user_id)
+    if not user:
+        return await message.answer("⚠️ Помилка. Спочатку поділіться номером телефону.")
+    
+    user_state[user_id]['chat_active'] = True
+    active_chats[user_id] = True
+    
+    # Оператор отримує повідомлення з кнопкою "Прийняти діалог"
+    for op in OPERATORS:
+        await bot.send_message(op, f"📨 Нове звернення від <b>{user['name']}</b> <code>{user['phone']}</code>.\nЩоб відповісти, натисніть кнопку 'Прийняти діалог'.", reply_markup=operator_keyboard(), parse_mode='HTML')
+    
+    await message.answer("📝 Опишіть вашу проблему нижче.", reply_markup=types.ReplyKeyboardRemove())
 
-    # Повідомлення оператору
-    for op_id in OPERATORS:
-        await bot.send_message(
-            op_id,
-            f"🆕 <b>Нове звернення</b> 🆕\n\n"
-            f"👤 Ім'я: <b>{user_state[user_id]['name']}</b>\n"
-            f"📞 Телефон: <code>{user_state[user_id]['phone']}</code>\n\n"
-            f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
-            "Натисніть у відповіді, щоб почати діалог ⬇️",
-            parse_mode="HTML"
-        )
+# Обробка повідомлень від оператора
+@dp.message_handler(lambda msg: active_chats.get(msg.from_user.id) and msg.text != "🔙 Завершити розмову")
+async def relay_to_operator(message: types.Message):
+    user = user_state.get(message.from_user.id)
+    if not user:
+        return
+    for op in OPERATORS:
+        await bot.send_message(op, f"✉️ {user['name']}: {message.text}")
 
-    await message.answer(
-        "⏳ Дякуємо за ваше звернення!\n"
-        "Будь ласка, зачекайте — ми під'єднуємо оператора...",
-        reply_markup=waiting_keyboard()
-    )
-
-    asyncio.create_task(waiting_timeout(user_id))
-
-async def waiting_timeout(user_id):
-    await asyncio.sleep(300)
-    if user_id in user_state and user_id not in active_chats:
-        await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом!")
-
-# Оператор відповідає свайпом
-@dp.message_handler(lambda message: message.reply_to_message and message.from_user.id in OPERATORS)
+# Обробка відповіді оператора на повідомлення користувача
+@dp.message_handler(lambda msg: msg.reply_to_message and msg.from_user.id in OPERATORS)
 async def operator_reply(message: types.Message):
-    original_text = message.reply_to_message.text
-
-    target_user = None
-    for uid, info in user_state.items():
-        if info.get('name') in original_text and info.get('phone') in original_text:
-            target_user = uid
-            break
-
-    if target_user:
-        active_chats[target_user] = {'operator_id': message.from_user.id}
-        await bot.send_message(
-            target_user,
-            f"💬 <b>Оператор TEMP:</b>\n\n"
-            f"{message.text}",
-            parse_mode="HTML",
-            reply_markup=waiting_keyboard()
-        )
-    else:
-        await message.reply("⚠️ Не вдалося знайти користувача для відповіді.")
-
-# Користувач пише оператору
-@dp.message_handler(lambda m: m.from_user.id in active_chats)
-async def user_message(message: types.Message):
-    op_id = active_chats[message.from_user.id]['operator_id']
-    await bot.send_message(
-        op_id,
-        f"👤 <b>{user_state[message.from_user.id]['name']}</b> пише:\n\n{message.text}",
-        parse_mode="HTML"
-    )
+    reply_text = message.reply_to_message.text
+    try:
+        # Визначаємо користувача, на чиє повідомлення відповідає оператор
+        user_id_line = [line for line in reply_text.split('\n') if '>' not in line][-1]
+        name = user_id_line.split(':')[0].replace('✉️', '').strip()
+        user_id = next((uid for uid, data in user_state.items() if data.get('name') == name), None)
+        if not user_id:
+            return await message.reply("⚠️ Не вдалося визначити користувача")
+        
+        # Надсилаємо відповідь користувачу
+        await bot.send_message(user_id, f"💬 Відповідь оператора: {message.text}")
+    except Exception as e:
+        await message.reply("❌ Помилка відповіді користувачу")
 
 # Завершення розмови
-@dp.message_handler(lambda m: m.text == "🔚 Завершити розмову")
+@dp.message_handler(lambda msg: msg.text == "🔙 Завершити розмову")
 async def end_chat(message: types.Message):
     user_id = message.from_user.id
-
-    if user_id in active_chats:
-        op_id = active_chats[user_id]['operator_id']
-        await bot.send_message(op_id, f"🔔 Користувач {user_state[user_id]['name']} завершив розмову.")
-        active_chats.pop(user_id, None)
-        await message.answer(
-            "✅ Розмову завершено. Натисніть /start, щоб почати нову консультацію.",
-            reply_markup=start_keyboard()
-        )
-
-    elif user_id in [chat.get('operator_id') for chat in active_chats.values()]:
-        for uid, chat in list(active_chats.items()):
-            if chat.get('operator_id') == user_id:
-                await bot.send_message(uid, "🔔 Оператор завершив розмову.")
-                active_chats.pop(uid, None)
-
-        await message.answer(
-            "✅ Ви завершили обслуговування клієнта.",
-            reply_markup=types.ReplyKeyboardRemove()
-        )
-
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    active_chats.pop(user_id, None)
+    user_state.get(user_id, {}).pop('chat_active', None)
+    await message.answer("🔚 Розмову завершено. Натисніть /start, щоб почати знову.", reply_markup=types.ReplyKeyboardRemove())
+    
+    # Повідомлення оператору про завершення розмови
+    for op in OPERATORS:
+        await bot.send_message(op, f"🔔 Користувач {user_state.get(user_id, {}).get('name', 'Користувач')} завершив розмову.")
