@@ -7,8 +7,7 @@ from aiogram.utils.exceptions import BotBlocked
 from dotenv import load_dotenv
 
 load_dotenv()
-API_TOKEN = os.getenv("7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o
-") or "7862608221:AAEixkRNQwwkhBVv0sLGevAdrcA9egHr20o"
+API_TOKEN = os.getenv("7862608221:AAFANx6YmUG2IPRiQp9l_ejOHTc12PEABCY"
 OPERATORS = [5498505652]
 
 logging.basicConfig(level=logging.INFO)
