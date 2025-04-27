@@ -33,12 +33,17 @@ def operator_accept_keyboard():
     kb.add(KeyboardButton("✅ Прийняти розмову"))
     return kb
 
+def operator_finish_keyboard():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("🔚 Завершити розмову"))
+    return kb
+
 # Старт
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     user_state.pop(message.from_user.id, None)
     await message.answer(
-        "👋 Вітаємо у службі підтримки <b>TEMP</b>!\n\n"
+        "👋 Вітаємо у службі підтримки <b>TEMP</b>! 🎉\n\n"
         "Будь ласка, надішліть свій номер телефону, натиснувши кнопку нижче 👇",
         reply_markup=start_keyboard()
     )
@@ -48,6 +53,7 @@ async def cmd_start(message: types.Message):
 async def contact_handler(message: types.Message):
     user_state[message.from_user.id] = {'phone': message.contact.phone_number}
     # Зникає кнопка "Поділитись номером"
+    await message.delete_reply_markup()  # Видаляємо кнопку після того, як номер надіслано
     await message.answer("🖊 Введіть ваше ім’я:")
 
 # Ім'я
@@ -105,7 +111,7 @@ async def operator_accept(message: types.Message):
     await bot.send_message(
         message.from_user.id,
         f"🔔 Ви почали розмову з користувачем {user_state[user_id]['name']}.",
-        reply_markup=waiting_keyboard()
+        reply_markup=operator_finish_keyboard()
     )
     await message.answer("💬 Тепер ви можете вільно відповідати на повідомлення користувача.")
 
@@ -152,6 +158,11 @@ async def end_chat(message: types.Message):
         await message.answer(
             "✅ Розмову завершено. Дякуємо за звернення! Будь ласка, натисніть /start для початку нової консультації.",
             reply_markup=start_keyboard()
+        )
+        # Повідомлення користувачу після завершення
+        await bot.send_message(
+            user_id,
+            "💬 Дякуємо, що звернулися до нас! Якщо у вас будуть ще питання, ми завжди на зв'язку. Бажаємо вам чудового дня! 🌟"
         )
 
     elif user_id in [chat.get('operator_id') for chat in active_chats.values()]:
