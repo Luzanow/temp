@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_TOKEN = os.getenv("BOT_TOKEN")  # Забезпечте правильне значення для вашого API токена
+API_TOKEN = os.getenv("BOT_TOKEN")  # Ваш токен бота
 OPERATORS = [5498505652]  # Ідентифікатори операторів, змініть на актуальні
 
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ active_chats = {}
 # Клавіатури
 def start_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Надіслати номер телефону", request_contact=True))
+    kb.add(KeyboardButton("📱 Поділитися номером телефону", request_contact=True))
     return kb
 
 def waiting_keyboard():
