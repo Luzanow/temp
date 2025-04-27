@@ -20,7 +20,7 @@ active_chats = {}
 # Клавіатури
 def start_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Надіслати номер телефону", request_contact=True))
+    kb.add(KeyboardButton("📱 Поділитися номером телефону", request_contact=True))
     return kb
 
 def waiting_keyboard():
@@ -28,12 +28,18 @@ def waiting_keyboard():
     kb.add(KeyboardButton("🔚 Завершити розмову"))
     return kb
 
+def operator_accept_keyboard():
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton("✅ Прийняти розмову"))
+    return kb
+
 # Старт
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     user_state.pop(message.from_user.id, None)
     await message.answer(
-        "👋 Вітаємо у службі підтримки <b>TEMP</b>!\n\n"
+        "👋 Вітаємо у службі підтримки <b>TEMP</b>! 🎉\n\n"
+        "Як ми можемо допомогти? 🤔\n"
         "Будь ласка, надішліть свій номер телефону, натиснувши кнопку нижче 👇",
         reply_markup=start_keyboard()
     )
@@ -48,7 +54,7 @@ async def contact_handler(message: types.Message):
 @dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
 async def name_handler(message: types.Message):
     user_state[message.from_user.id]['name'] = message.text
-    await message.answer("📝 Коротко опишіть вашу проблему або запитання:")
+    await message.answer("📝 Коротко опишіть вашу проблему або запитання, і ми обов'язково допоможемо!")
 
 # Питання
 @dp.message_handler(lambda m: m.from_user.id in user_state and 'question' not in user_state[m.from_user.id])
@@ -65,12 +71,13 @@ async def question_handler(message: types.Message):
             f"📞 Телефон: <code>{user_state[user_id]['phone']}</code>\n\n"
             f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
             "Натисніть у відповіді, щоб почати діалог ⬇️",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=operator_accept_keyboard()
         )
 
     await message.answer(
         "⏳ Дякуємо за ваше звернення!\n"
-        "Будь ласка, зачекайте — ми під'єднуємо оператора...",
+        "Будь ласка, зачекайте — ми під'єднуємо оператора... 🕐",
         reply_markup=waiting_keyboard()
     )
 
@@ -79,9 +86,25 @@ async def question_handler(message: types.Message):
 async def waiting_timeout(user_id):
     await asyncio.sleep(300)
     if user_id in user_state and user_id not in active_chats:
-        await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом!")
+        await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом! 💬")
 
-# Оператор відповідає свайпом
+# Оператор приймає розмову
+@dp.message_handler(lambda message: message.text == "✅ Прийняти розмову" and message.from_user.id in OPERATORS)
+async def operator_accept(message: types.Message):
+    user_id = message.reply_to_message.from_user.id
+    active_chats[user_id] = {'operator_id': message.from_user.id}
+    await bot.send_message(
+        user_id,
+        f"💬 Оператор TEMP почав з вами спілкуватися! 🚀",
+        reply_markup=waiting_keyboard()
+    )
+    await bot.send_message(
+        message.from_user.id,
+        f"🔔 Ви почали розмову з користувачем {user_state[user_id]['name']}.",
+        reply_markup=waiting_keyboard()
+    )
+
+# Оператор відповідає користувачу
 @dp.message_handler(lambda message: message.reply_to_message and message.from_user.id in OPERATORS)
 async def operator_reply(message: types.Message):
     original_text = message.reply_to_message.text
@@ -93,10 +116,9 @@ async def operator_reply(message: types.Message):
             break
 
     if target_user:
-        active_chats[target_user] = {'operator_id': message.from_user.id}
         await bot.send_message(
             target_user,
-            f"💬 <b>Оператор TEMP:</b>\n\n"
+            f"💬 <b>Оператор TEMP:</b> 🗣️\n\n"
             f"{message.text}",
             parse_mode="HTML",
             reply_markup=waiting_keyboard()
