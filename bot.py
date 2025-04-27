@@ -109,6 +109,11 @@ async def operator_reply(message: types.Message):
         parse_mode="HTML"
     )
 
+# Користувач може писати тільки після того, як оператор прийняв розмову
+@dp.message_handler(lambda m: m.from_user.id in user_state and m.from_user.id not in active_chats)
+async def wait_for_operator(message: types.Message):
+    await message.answer("⏳ Чекайте, поки оператор приєднається до чату.")
+
 # Завершення чату
 @dp.message_handler(lambda m: m.text == "🔚 Завершити розмову")
 async def end_chat(message: types.Message):
