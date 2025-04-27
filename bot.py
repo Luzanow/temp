@@ -30,7 +30,7 @@ def waiting_keyboard():
 
 def operator_accept_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("✅ Прийняти розмову"))
+    kb.add(KeyboardButton("✅ Прийняти цю розмову"))
     return kb
 
 # Старт
@@ -70,7 +70,7 @@ async def question_handler(message: types.Message):
             f"👤 Ім'я: <b>{user_state[user_id]['name']}</b>\n"
             f"📞 Телефон: <code>{user_state[user_id]['phone']}</code>\n\n"
             f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
-            "Натисніть у відповіді, щоб почати діалог ⬇️",
+            "Натисніть на кнопку нижче, щоб прийняти цю розмову ⬇️",
             parse_mode="HTML",
             reply_markup=operator_accept_keyboard()
         )
@@ -89,7 +89,7 @@ async def waiting_timeout(user_id):
         await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом!")
 
 # Оператор приймає розмову
-@dp.message_handler(lambda message: message.text == "✅ Прийняти розмову" and message.from_user.id in OPERATORS)
+@dp.message_handler(lambda message: message.text == "✅ Прийняти цю розмову" and message.from_user.id in OPERATORS)
 async def accept_chat(message: types.Message):
     user_id = message.reply_to_message.from_user.id
     # Повідомлення користувачу про те, що оператор приєднався
