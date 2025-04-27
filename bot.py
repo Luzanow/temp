@@ -2,116 +2,105 @@ import logging
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputFile
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
 load_dotenv()
-API_TOKEN = os.getenv("API_TOKEN")  # В .env файлi: API_TOKEN=токен
-ADMIN_CHAT_ID = 5498505652  # Твiй ID
-OPERATOR_NAME = "Роман"  # Ім'я оператора
+API_TOKEN = os.getenv("API_TOKEN")
+ADMIN_CHAT_ID = 5498505652
+OPERATOR_NAME = "Тарас"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
 dp = Dispatcher(bot)
 
-user_state = {}
-forwarded_messages = {}
-last_user_message_time = {}
-waiting_tasks = {}
+active_chats = {}  # оператор_id -> user_id
+waiting_users = {}
 
 # Клавiатури
 def start_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("📱 Поділитися номером", request_contact=True))
-    kb.add(KeyboardButton("📄 Умови використання Temp"))
     return kb
 
-def back_keyboard():
+def end_chat_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🔙 Завершити розмову"))
+    kb.add(KeyboardButton("🔚 Завершити розмову"))
     return kb
 
-# Старт
+def operator_end_keyboard():
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🔚 Завершити розмову", callback_data="end_chat"))
+    return kb
+
 @dp.message_handler(commands=['start'])
 async def start_handler(message: types.Message):
-    user_state.pop(message.from_user.id, None)
-    forwarded_messages.clear()
-    last_user_message_time.pop(message.from_user.id, None)
-    waiting_tasks.pop(message.from_user.id, None)
-    await message.answer("👋 Вітаємо! Поділіться номером телефону або перегляньте умови.", reply_markup=start_keyboard())
+    await message.answer("🚀 Почнемо нашу розмову! Надішліть свій номер телефону — і ми миттєво з вами на зв'язку. ❤️", reply_markup=start_keyboard())
 
 @dp.message_handler(content_types=types.ContentType.CONTACT)
 async def handle_contact(message: types.Message):
-    user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    await message.answer("✏️ Введіть ваше ім'я:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("✏️ Напишіть своє ім'я:", reply_markup=ReplyKeyboardRemove())
+    active_chats[message.from_user.id] = {'phone': message.contact.phone_number, 'name': None, 'operator': None}
 
-@dp.message_handler(lambda msg: msg.from_user.id in user_state and 'name' not in user_state[msg.from_user.id])
+@dp.message_handler(lambda msg: msg.from_user.id in active_chats and active_chats[msg.from_user.id]['name'] is None)
 async def handle_name(message: types.Message):
-    user_state[message.from_user.id]['name'] = message.text
-    await message.answer("✅ Дякуємо! Щоб почати спілкування, просто напишіть повідомлення.", reply_markup=back_keyboard())
+    active_chats[message.from_user.id]['name'] = message.text
+    await message.answer("👋 Дякуємо! Ми вже на підході. Оператор скоро відповість 🚀", reply_markup=end_chat_keyboard())
 
-@dp.message_handler(lambda msg: msg.text == "📄 Умови використання Temp")
-async def send_terms(message: types.Message):
-    try:
-        doc = InputFile("full_temp_terms.pdf")
-        await bot.send_document(message.chat.id, doc, caption="📎 Ознайомтесь з умовами використання")
-    except:
-        await message.answer("⚠️ Не вдалося знайти файл умов.")
+    user = active_chats[message.from_user.id]
+    inline_kb = InlineKeyboardMarkup()
+    inline_kb.add(InlineKeyboardButton("✅ Взяти в роботу", callback_data=f"accept_{message.from_user.id}"))
+    await bot.send_message(ADMIN_CHAT_ID, f"🆕 Нове звернення!\n\nІм'я: {user['name']}\nТелефон: {user['phone']}", reply_markup=inline_kb)
 
-async def wait_for_reply(user_id):
-    await asyncio.sleep(300)  # 5 хвилин
-    if user_id in last_user_message_time:
-        await bot.send_message(user_id, "⚠️ Вибачте, всі оператори зараз зайняті. Ми швидко знайдемо для вас спеціаліста. Будь ласка, очікуйте.")
-        waiting_tasks.pop(user_id, None)
+    task = asyncio.create_task(wait_operator_response(message.from_user.id))
+    waiting_users[message.from_user.id] = task
 
-@dp.message_handler(lambda msg: msg.text == "🔙 Завершити розмову")
-async def end_chat(message: types.Message):
-    user_id = message.from_user.id
-    user_state.pop(user_id, None)
-    last_user_message_time.pop(user_id, None)
-    waiting_tasks.pop(user_id, None)
-    forwarded_messages_to_delete = [fid for fid, uid in forwarded_messages.items() if uid == user_id]
-    for fid in forwarded_messages_to_delete:
-        forwarded_messages.pop(fid, None)
-    await message.answer("🔚 Розмову завершено. Натисніть /start, щоб почати знову.", reply_markup=start_keyboard())
-    await bot.send_message(ADMIN_CHAT_ID, f"🔔 Користувач завершив розмову.")
+async def wait_operator_response(user_id):
+    await asyncio.sleep(300)
+    if user_id in active_chats and active_chats[user_id]['operator'] is None:
+        await bot.send_message(user_id, "😔 Вибачте, всі оператори зараз зайняті. Ми обов'язково скоро з вами зв'яжемось! ❤️")
+        waiting_users.pop(user_id, None)
+
+@dp.callback_query_handler(lambda c: c.data.startswith('accept_'))
+async def accept_chat(callback_query: types.CallbackQuery):
+    user_id = int(callback_query.data.split('_')[1])
+    active_chats[user_id]['operator'] = ADMIN_CHAT_ID
+    await bot.send_message(user_id, f"🎉 Оператор {OPERATOR_NAME} приєднався до чату! Можете ставити питання.")
+    await callback_query.message.edit_text(f"✅ Ви прийняли звернення від {active_chats[user_id]['name']}", reply_markup=operator_end_keyboard())
+    if user_id in waiting_users:
+        waiting_users[user_id].cancel()
+        waiting_users.pop(user_id, None)
+
+@dp.callback_query_handler(lambda c: c.data == 'end_chat')
+async def operator_end_chat(callback_query: types.CallbackQuery):
+    user_id = None
+    for uid, chat in active_chats.items():
+        if chat.get('operator') == ADMIN_CHAT_ID:
+            user_id = uid
+            break
+    if user_id:
+        await bot.send_message(user_id, "🔚 Дякуємо за звернення! Гарного дня! 🌟", reply_markup=ReplyKeyboardRemove())
+        await callback_query.message.edit_text("✅ Ви завершили розмову. Можете прийняти новий чат.")
+        active_chats.pop(user_id, None)
+
+@dp.message_handler(lambda msg: msg.from_user.id == ADMIN_CHAT_ID)
+async def operator_messages(message: types.Message):
+    for user_id, info in active_chats.items():
+        if info.get('operator') == ADMIN_CHAT_ID:
+            await bot.send_message(user_id, f"💬 {OPERATOR_NAME}:\n\n{message.text}")
+            break
 
 @dp.message_handler()
-async def forward_to_operator(message: types.Message):
-    if message.text == "🔙 Завершити розмову":
+async def user_messages(message: types.Message):
+    if message.text == "🔚 Завершити розмову":
+        if message.from_user.id in active_chats:
+            await bot.send_message(message.from_user.id, "🔚 Дякуємо за звернення! Гарного дня! 🌟", reply_markup=ReplyKeyboardRemove())
+            if active_chats[message.from_user.id]['operator']:
+                await bot.send_message(ADMIN_CHAT_ID, f"🔔 Користувач {active_chats[message.from_user.id]['name']} завершив розмову.")
+            active_chats.pop(message.from_user.id, None)
         return
-    if message.from_user.id in user_state:
-        user = user_state.get(message.from_user.id)
-        if user:
-            header = f"👤 {user['name']} ({user['phone']})"
-            await bot.send_message(ADMIN_CHAT_ID, f"👋 Вас вітає служба підтримки TEMP! Очікуйте відповідь оператора.\n\n{header}")
-            forwarded = await bot.send_message(ADMIN_CHAT_ID, f"✉️ {message.text}")
-            forwarded_messages[forwarded.message_id] = message.from_user.id
-            last_user_message_time[message.from_user.id] = message.date
-            if message.from_user.id not in waiting_tasks:
-                task = asyncio.create_task(wait_for_reply(message.from_user.id))
-                waiting_tasks[message.from_user.id] = task
-
-@dp.message_handler(lambda msg: msg.reply_to_message and msg.from_user.id == ADMIN_CHAT_ID)
-async def admin_reply(message: types.Message):
-    reply = message.reply_to_message
-    if not reply:
-        return
-    user_id = forwarded_messages.get(reply.message_id)
-    if not user_id:
-        await message.answer("⚠️ Неможливо знайти користувача для відповіді.")
-        return
-    try:
-        await bot.send_message(
-            user_id,
-            f"""💬 Повідомлення від служби підтримки TEMP:\n👨‍💼 Оператор: {OPERATOR_NAME}\n\n{message.text}"""
-        )
-        # Якщо оператор відповів — скасовуємо таймер очікування
-        if user_id in waiting_tasks:
-            waiting_tasks[user_id].cancel()
-            waiting_tasks.pop(user_id, None)
-    except:
-        await message.answer("⚠️ Не вдалося доставити повідомлення користувачу.")
+    if message.from_user.id in active_chats and active_chats[message.from_user.id]['operator']:
+        await bot.send_message(ADMIN_CHAT_ID, f"💬 {active_chats[message.from_user.id]['name']}:\n\n{message.text}")
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
