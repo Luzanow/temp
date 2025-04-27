@@ -115,7 +115,7 @@ async def operator_reply(message: types.Message):
     # Відправляємо повідомлення користувачу
     await bot.send_message(
         user_id,
-        f"👤 Оператор пише:\n\n{message.text}",
+        f"{message.text}",
         parse_mode="HTML"
     )
 
