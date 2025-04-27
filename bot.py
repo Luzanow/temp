@@ -35,7 +35,7 @@ def operator_accept_keyboard():
 
 def operator_finish_keyboard():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🔚 Завершити розмову"))
+    kb.add(KeyboardButton("🔚 Завершити діалог"))
     return kb
 
 # Старт
@@ -43,7 +43,7 @@ def operator_finish_keyboard():
 async def cmd_start(message: types.Message):
     user_state.pop(message.from_user.id, None)
     await message.answer(
-        "👋 Вітаємо у службі підтримки <b>TEMP</b>! 🎉\n\n"
+        "👋 Вітаємо у службі підтримки <b>TEMP</b>!\n\n"
         "Будь ласка, надішліть свій номер телефону, натиснувши кнопку нижче 👇",
         reply_markup=start_keyboard()
     )
@@ -111,7 +111,7 @@ async def operator_accept(message: types.Message):
     await bot.send_message(
         message.from_user.id,
         f"🔔 Ви почали розмову з користувачем {user_state[user_id]['name']}.",
-        reply_markup=operator_finish_keyboard()
+        reply_markup=operator_finish_keyboard()  # Кнопка завершення для оператора
     )
     await message.answer("💬 Тепер ви можете вільно відповідати на повідомлення користувача.")
 
