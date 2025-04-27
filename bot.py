@@ -112,6 +112,7 @@ async def accept_chat(callback_query: types.CallbackQuery):
 @dp.message_handler(lambda m: m.from_user.id in active_chats)
 async def operator_reply(message: types.Message):
     user_id = active_chats[message.from_user.id]['operator_id']
+    # Відправляємо повідомлення користувачу
     await bot.send_message(
         user_id,
         f"👤 Оператор пише:\n\n{message.text}",
