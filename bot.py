@@ -1,21 +1,13 @@
 import logging
 import os
-import asyncio
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from dotenv import load_dotenv
 
-# Завантаження змінних з файлу .env
 load_dotenv()
 
-# Отримуємо BOT_TOKEN з змінних середовища
 API_TOKEN = os.getenv("BOT_TOKEN")
-
-# Перевіряємо, чи правильно завантажено токен
-if not API_TOKEN:
-    raise ValueError("API_TOKEN не визначено. Перевірте .env файл.")
-
-OPERATORS = [5498505652]  # ID оператора
+OPERATORS = [5498505652]
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode="HTML")
@@ -86,13 +78,6 @@ async def question_handler(message: types.Message):
         "Будь ласка, зачекайте — ми під'єднуємо оператора...",
         reply_markup=waiting_keyboard()
     )
-
-    asyncio.create_task(waiting_timeout(user_id))
-
-async def waiting_timeout(user_id):
-    await asyncio.sleep(300)
-    if user_id in user_state and user_id not in active_chats:
-        await bot.send_message(user_id, "⏳ Вибачте, всі оператори зайняті. Ми обов'язково вам відповімо найближчим часом!")
 
 # Оператор приймає розмову
 @dp.message_handler(lambda message: message.text == "✅ Прийняти розмову" and message.from_user.id in OPERATORS)
