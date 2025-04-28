@@ -115,7 +115,7 @@ async def operator_reply(message: types.Message):
     # Відправляємо повідомлення користувачу
     await bot.send_message(
         user_id,
-        f"{message.text}",
+        f"💬 <b>Оператор:</b>\n\n{message.text}",
         parse_mode="HTML"
     )
 
@@ -131,8 +131,11 @@ async def end_chat(callback_query: types.CallbackQuery):
 
     if user_id in active_chats:
         op_id = active_chats[user_id]['operator_id']
+        # Повідомлення оператору про завершення чату
         await bot.send_message(op_id, f"🔔 Користувач {user_state[user_id]['name']} завершив розмову.")
-        active_chats.pop(user_id, None)
+        active_chats.pop(user_id, None)  # Видаляємо чат з активних
+
+        # Повідомлення користувачу
         await bot.send_message(user_id, "✅ Розмову завершено. Натисніть /start, щоб почати нову консультацію.")
         await callback_query.answer()
 
@@ -143,6 +146,7 @@ async def end_chat(callback_query: types.CallbackQuery):
                 active_chats.pop(uid, None)
 
         await bot.send_message(user_id, "✅ Ви завершили обслуговування клієнта.")
+        await callback_query.answer()
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
