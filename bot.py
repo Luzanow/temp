@@ -78,7 +78,7 @@ async def question_handler(message: types.Message):
             f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
             "Натисніть на кнопку нижче, щоб прийняти розмову або завершити.",
             parse_mode="HTML",
-            reply_markup=operator_keyboard()
+            reply_markup=operator_keyboard()  # Кнопки для оператора
         )
 
     await message.answer(
