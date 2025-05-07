@@ -71,8 +71,7 @@ async def get_phone(message: types.Message, state: FSMContext):
         await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}\n• Проблема: {issue}", reply_markup=kb)
 
     await state.finish()
-    kb_user = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
-    await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=kb_user)
+    await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=ReplyKeyboardRemove())
 
 @dp.callback_query_handler(lambda c: c.data == "user_end")
 async def user_end_chat(callback_query: types.CallbackQuery):
@@ -93,7 +92,8 @@ async def accept_chat(callback_query: types.CallbackQuery):
         user_sessions[user_id]["operator_id"] = callback_query.from_user.id
         user_sessions[user_id]["last_active"] = datetime.now()
 
-        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.")
+        kb_user = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
+        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=kb_user)
         await bot.send_message(callback_query.from_user.id,
                                f"✅ Ви прийняли звернення користувача {user_id}.", 
                                reply_markup=InlineKeyboardMarkup().add(
