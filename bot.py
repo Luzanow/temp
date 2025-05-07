@@ -18,19 +18,17 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
 logging.basicConfig(level=logging.INFO)
 
-# Стан користувача
 class ChatState(StatesGroup):
+    waiting_issue = State()
     waiting_name = State()
     waiting_phone = State()
     active_chat = State()
 
-user_sessions = {}  # user_id: {"accepted": False, "operator_id": None, "last_active": datetime}
+user_sessions = {}
 
-# Клавіатура для поділитись номером
 phone_keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 phone_keyboard.add(KeyboardButton("📞 Поділитись номером", request_contact=True))
 
-# Стартове меню
 def start_keyboard():
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("💬 Зв’язатись з оператором", callback_data="contact_operator"))
@@ -39,13 +37,14 @@ def start_keyboard():
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     user_sessions.pop(message.from_user.id, None)
-    await message.answer("🙋 Вітаємо! Натисніть кнопку нижче, щоб почати.", reply_markup=start_keyboard())
+    await ChatState.waiting_issue.set()
+    await message.answer("🙋 Вас вітає служба підтримки TEMP. Будь ласка, коротко опишіть вашу проблему:")
 
-@dp.callback_query_handler(lambda c: c.data == "contact_operator")
-async def contact_operator(callback_query: types.CallbackQuery, state: FSMContext):
+@dp.message_handler(state=ChatState.waiting_issue)
+async def get_issue(message: types.Message, state: FSMContext):
+    await state.update_data(issue=message.text)
     await ChatState.waiting_name.set()
-    await callback_query.message.answer("👤 Як вас звати?", reply_markup=ReplyKeyboardRemove())
-    await callback_query.answer()
+    await message.answer("👤 Як вас звати?", reply_markup=ReplyKeyboardRemove())
 
 @dp.message_handler(state=ChatState.waiting_name)
 async def get_name(message: types.Message, state: FSMContext):
@@ -60,6 +59,7 @@ async def get_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     data = await state.get_data()
     name = data['name']
+    issue = data['issue']
     user_id = message.from_user.id
 
     user_sessions[user_id] = {"accepted": False, "operator_id": None, "last_active": datetime.now()}
@@ -68,10 +68,22 @@ async def get_phone(message: types.Message, state: FSMContext):
         kb = InlineKeyboardMarkup().add(
             InlineKeyboardButton("✅ Прийняти", callback_data=f"accept_{user_id}")
         )
-        await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}", reply_markup=kb)
+        await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}\n• Проблема: {issue}", reply_markup=kb)
 
     await state.finish()
-    await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=ReplyKeyboardRemove())
+    kb_user = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
+    await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=kb_user)
+
+@dp.callback_query_handler(lambda c: c.data == "user_end")
+async def user_end_chat(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id in user_sessions:
+        op_id = user_sessions[user_id].get("operator_id")
+        if op_id:
+            await bot.send_message(op_id, f"❌ Користувач завершив чат.")
+        user_sessions.pop(user_id)
+    await callback_query.message.answer("✅ Ви завершили чат. Натисніть /start, щоб почати знову.")
+    await callback_query.answer()
 
 @dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
 async def accept_chat(callback_query: types.CallbackQuery):
@@ -93,18 +105,17 @@ async def accept_chat(callback_query: types.CallbackQuery):
 async def handle_user_message(message: types.Message):
     session = user_sessions.get(message.from_user.id)
     if not session or not session.get("accepted"):
-        return  # Користувач не може писати до підключення
-
+        return
     operator_id = session["operator_id"]
-    user_sessions[message.from_user.id]["last_active"] = datetime.now()
+    session["last_active"] = datetime.now()
     await bot.send_message(operator_id, f"👤 Користувач:\n{message.text}")
 
 @dp.message_handler(lambda m: m.from_user.id in OPERATORS)
 async def handle_operator_message(message: types.Message):
     for user_id, session in user_sessions.items():
         if session.get("operator_id") == message.from_user.id and session.get("accepted"):
-            await bot.send_message(user_id, f"👨‍💻 Оператор:\n{message.text}")
             session["last_active"] = datetime.now()
+            await bot.send_message(user_id, f"👨‍💻 Оператор:\n{message.text}")
             break
 
 @dp.callback_query_handler(lambda c: c.data.startswith("end_"))
@@ -133,4 +144,3 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(monitor_timeouts())
     executor.start_polling(dp, skip_updates=True)
-
