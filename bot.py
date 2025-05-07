@@ -19,12 +19,11 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 logging.basicConfig(level=logging.INFO)
 
 class ChatState(StatesGroup):
-    waiting_issue = State()
     waiting_name = State()
     waiting_phone = State()
     active_chat = State()
 
-user_sessions = {}
+user_sessions = {}  # user_id: {"accepted": False, "operator_id": None, "last_active": datetime}
 
 phone_keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 phone_keyboard.add(KeyboardButton("📞 Поділитись номером", request_contact=True))
@@ -37,14 +36,13 @@ def start_keyboard():
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     user_sessions.pop(message.from_user.id, None)
-    await ChatState.waiting_issue.set()
-    await message.answer("🙋 Вас вітає служба підтримки TEMP. Будь ласка, коротко опишіть вашу проблему:")
+    await message.answer("🙋 Вітаємо! Натисніть кнопку нижче, щоб почати.", reply_markup=start_keyboard())
 
-@dp.message_handler(state=ChatState.waiting_issue)
-async def get_issue(message: types.Message, state: FSMContext):
-    await state.update_data(issue=message.text)
+@dp.callback_query_handler(lambda c: c.data == "contact_operator")
+async def contact_operator(callback_query: types.CallbackQuery, state: FSMContext):
     await ChatState.waiting_name.set()
-    await message.answer("👤 Як вас звати?", reply_markup=ReplyKeyboardRemove())
+    await callback_query.message.answer("👤 Як вас звати?", reply_markup=ReplyKeyboardRemove())
+    await callback_query.answer()
 
 @dp.message_handler(state=ChatState.waiting_name)
 async def get_name(message: types.Message, state: FSMContext):
@@ -59,7 +57,6 @@ async def get_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=phone)
     data = await state.get_data()
     name = data['name']
-    issue = data['issue']
     user_id = message.from_user.id
 
     user_sessions[user_id] = {"accepted": False, "operator_id": None, "last_active": datetime.now()}
@@ -68,7 +65,7 @@ async def get_phone(message: types.Message, state: FSMContext):
         kb = InlineKeyboardMarkup().add(
             InlineKeyboardButton("✅ Прийняти", callback_data=f"accept_{user_id}")
         )
-        await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}\n• Проблема: {issue}", reply_markup=kb)
+        await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}", reply_markup=kb)
 
     await state.finish()
     await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=ReplyKeyboardRemove())
@@ -80,8 +77,8 @@ async def user_end_chat(callback_query: types.CallbackQuery):
         op_id = user_sessions[user_id].get("operator_id")
         if op_id:
             await bot.send_message(op_id, f"❌ Користувач завершив чат.")
+        await bot.send_message(user_id, "✅ Ви завершили чат. Щоб почати знову — натисніть /start")
         user_sessions.pop(user_id)
-    await callback_query.message.answer("✅ Ви завершили чат. Натисніть /start, щоб почати знову.")
     await callback_query.answer()
 
 @dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
@@ -92,8 +89,9 @@ async def accept_chat(callback_query: types.CallbackQuery):
         user_sessions[user_id]["operator_id"] = callback_query.from_user.id
         user_sessions[user_id]["last_active"] = datetime.now()
 
-        kb_user = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
-        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=kb_user)
+        user_kb = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
+        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=user_kb)
+
         await bot.send_message(callback_query.from_user.id,
                                f"✅ Ви прийняли звернення користувача {user_id}.", 
                                reply_markup=InlineKeyboardMarkup().add(
@@ -123,6 +121,7 @@ async def end_chat(callback_query: types.CallbackQuery):
     user_id = int(callback_query.data.split("_")[1])
     if user_id in user_sessions:
         await bot.send_message(user_id, "❌ Чат завершено. Дякуємо!")
+        await bot.send_message(user_id, "🔁 Щоб розпочати новий чат, натисніть /start")
         await bot.send_message(callback_query.from_user.id, "✅ Ви завершили чат.")
         user_sessions.pop(user_id)
     await callback_query.answer()
