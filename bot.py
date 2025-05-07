@@ -83,6 +83,7 @@ async def user_end_chat(callback_query: types.CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
 async def accept_chat(callback_query: types.CallbackQuery):
+    await callback_query.answer()
     user_id = int(callback_query.data.split("_")[1])
     if user_id in user_sessions:
         user_sessions[user_id]["accepted"] = True
@@ -97,7 +98,6 @@ async def accept_chat(callback_query: types.CallbackQuery):
                                reply_markup=InlineKeyboardMarkup().add(
                                    InlineKeyboardButton("❌ Завершити", callback_data=f"end_{user_id}")
                                ))
-    await callback_query.answer()
 
 @dp.message_handler(lambda m: m.from_user.id in user_sessions)
 async def handle_user_message(message: types.Message):
