@@ -28,6 +28,9 @@ user_sessions = {}  # user_id: {"accepted": False, "operator_id": None, "last_ac
 phone_keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 phone_keyboard.add(KeyboardButton("📞 Поділитись номером", request_contact=True))
 
+end_keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+end_keyboard.add(KeyboardButton("❌ Завершити розмову"))
+
 def start_keyboard():
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("💬 Зв’язатись з оператором", callback_data="contact_operator"))
@@ -70,16 +73,16 @@ async def get_phone(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=ReplyKeyboardRemove())
 
-@dp.callback_query_handler(lambda c: c.data == "user_end")
-async def user_end_chat(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
+@dp.message_handler(lambda m: m.text == "❌ Завершити розмову")
+async def user_end_chat_button(message: types.Message):
+    user_id = message.from_user.id
     if user_id in user_sessions:
         op_id = user_sessions[user_id].get("operator_id")
         if op_id:
             await bot.send_message(op_id, f"❌ Користувач завершив чат.")
-        await bot.send_message(user_id, "✅ Ви завершили чат. Щоб почати знову — натисніть /start")
+        await message.answer("✅ Ви завершили чат. Щоб почати знову — натисніть кнопку нижче:", reply_markup=ReplyKeyboardRemove())
+        await cmd_start(message)
         user_sessions.pop(user_id)
-    await callback_query.answer()
 
 @dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
 async def accept_chat(callback_query: types.CallbackQuery):
@@ -90,8 +93,7 @@ async def accept_chat(callback_query: types.CallbackQuery):
         user_sessions[user_id]["operator_id"] = callback_query.from_user.id
         user_sessions[user_id]["last_active"] = datetime.now()
 
-        user_kb = InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Завершити розмову", callback_data="user_end"))
-        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=user_kb)
+        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=end_keyboard)
 
         await bot.send_message(callback_query.from_user.id,
                                f"✅ Ви прийняли звернення користувача {user_id}.", 
