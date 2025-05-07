@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_TOKEN = os.getenv("BOT_TOKEN")
-OPERATORS = [5498505652]
+OPERATORS = [5498505652]  # ID оператора
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN, parse_mode="HTML")
