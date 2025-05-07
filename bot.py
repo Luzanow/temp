@@ -39,19 +39,19 @@ def start_keyboard():
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
     user_sessions.pop(message.from_user.id, None)
-    await message.answer("🙋 Вітаємо! Натисніть кнопку нижче, щоб почати.", reply_markup=start_keyboard())
+    await message.answer("👋 Привіт! Це служба підтримки TEMP 💬\n\nМи тут, щоб допомогти вам якнайшвидше 🙌", reply_markup=start_keyboard())
 
 @dp.callback_query_handler(lambda c: c.data == "contact_operator")
 async def contact_operator(callback_query: types.CallbackQuery, state: FSMContext):
     await ChatState.waiting_name.set()
-    await callback_query.message.answer("👤 Як вас звати?", reply_markup=ReplyKeyboardRemove())
+    await callback_query.message.answer("😎 Як можу до вас звертатись?", reply_markup=ReplyKeyboardRemove())
     await callback_query.answer()
 
 @dp.message_handler(state=ChatState.waiting_name)
 async def get_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await ChatState.waiting_phone.set()
-    await message.answer("📞 Поділіться номером або введіть вручну:", reply_markup=phone_keyboard)
+    await message.answer("📱 Поділіться номером або просто введіть його вручну, ми не передамо його інопланетянам 👽", reply_markup=phone_keyboard)
 
 @dp.message_handler(content_types=types.ContentType.CONTACT, state=ChatState.waiting_phone)
 @dp.message_handler(lambda m: True, state=ChatState.waiting_phone)
@@ -71,7 +71,7 @@ async def get_phone(message: types.Message, state: FSMContext):
         await bot.send_message(op_id, f"🔔 Нове звернення:\n\n• Ім’я: {name}\n• Телефон: {phone}", reply_markup=kb)
 
     await state.finish()
-    await message.answer("⏳ Очікуйте, оператор з’єднається з вами...", reply_markup=ReplyKeyboardRemove())
+    await message.answer("⏳ Дякуємо! Ваше звернення зареєстровано.\nОчікуйте на відповідь від нашого 🧑‍💼 оператора...", reply_markup=ReplyKeyboardRemove())
 
 @dp.message_handler(lambda m: m.text == "❌ Завершити розмову")
 async def user_end_chat_button(message: types.Message):
@@ -80,20 +80,20 @@ async def user_end_chat_button(message: types.Message):
         op_id = user_sessions[user_id].get("operator_id")
         if op_id:
             await bot.send_message(op_id, f"❌ Користувач завершив чат.")
-        await message.answer("✅ Ви завершили чат. Щоб почати знову — натисніть кнопку нижче:", reply_markup=ReplyKeyboardRemove())
+        await message.answer("✅ Ви завершили розмову. Якщо ще буде питання — ми тут як тут 🤝", reply_markup=ReplyKeyboardRemove())
         await cmd_start(message)
         user_sessions.pop(user_id)
 
 @dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
 async def accept_chat(callback_query: types.CallbackQuery):
-    await callback_query.answer()
+    await callback_query.answer(cache_time=0)
     user_id = int(callback_query.data.split("_")[1])
     if user_id in user_sessions:
         user_sessions[user_id]["accepted"] = True
         user_sessions[user_id]["operator_id"] = callback_query.from_user.id
         user_sessions[user_id]["last_active"] = datetime.now()
 
-        await bot.send_message(user_id, "👨‍💻 Оператор підключився. Можете писати.", reply_markup=end_keyboard)
+        await bot.send_message(user_id, "👨‍💻 Хоп! Ми на зв'язку 🙌\nПишіть ваше питання прямо сюди ⌨️", reply_markup=end_keyboard)
 
         await bot.send_message(callback_query.from_user.id,
                                f"✅ Ви прийняли звернення користувача {user_id}.", 
