@@ -1,135 +1,84 @@
 import logging
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 import os
-from aiogram import Bot, Dispatcher, types, executor
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from dotenv import load_dotenv
 
 load_dotenv()
-
 API_TOKEN = os.getenv("BOT_TOKEN")
-OPERATORS = [5498505652]  # ID оператора
+OPERATORS = [5498505652]  # список ID операторів  # Telegram ID оператора
 
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot, storage=MemoryStorage())
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=API_TOKEN, parse_mode="HTML")
-dp = Dispatcher(bot)
 
-user_state = {}
-active_chats = {}
+# Стани діалогу
+class Dialog(StatesGroup):
+    chatting = State()
 
-# Клавіатури
-def start_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("📱 Надіслати номер телефону", request_contact=True))
-    return kb
+# Зберігає незавершені звернення
+pending_requests = {}  # user_id: [messages]
+active_chats = {}  # operator_id: user_id      # operator_id: user_id
 
-def waiting_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🔚 Завершити розмову"))
-    return kb
-
-def operator_keyboard():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("✅ Прийняти розмову"), KeyboardButton("❌ Завершити розмову"))
-    return kb
-
-# Старт
+# Команда /start
 @dp.message_handler(commands=['start'])
-async def cmd_start(message: types.Message):
-    user_state.pop(message.from_user.id, None)
-    await message.answer(
-        "👋 Вітаємо у службі підтримки <b>TEMP</b>!\n\n"
-        "Будь ласка, надішліть свій номер телефону, натиснувши кнопку нижче 👇",
-        reply_markup=start_keyboard()
-    )
+async def start(message: types.Message):
+    await message.answer("👋 Вітаємо! Напишіть ваше запитання, оператор скоро відповість.")
 
-# Контакт
-@dp.message_handler(content_types=types.ContentType.CONTACT)
-async def contact_handler(message: types.Message):
-    user_state[message.from_user.id] = {'phone': message.contact.phone_number}
-    await message.answer("🖊 Введіть ваше ім’я:")
-
-# Ім'я
-@dp.message_handler(lambda m: m.from_user.id in user_state and 'name' not in user_state[m.from_user.id])
-async def name_handler(message: types.Message):
-    user_state[message.from_user.id]['name'] = message.text
-    await message.answer("📝 Коротко опишіть вашу проблему або запитання:")
-
-# Питання
-@dp.message_handler(lambda m: m.from_user.id in user_state and 'question' not in user_state[m.from_user.id])
-async def question_handler(message: types.Message):
-    user_state[message.from_user.id]['question'] = message.text
+@dp.message_handler(lambda message: message.chat.id != ADMIN_ID)
+async def handle_user_message(message: types.Message):
     user_id = message.from_user.id
+    if user_id not in pending_requests:
+        pending_requests[user_id] = []
+        text = f"🆕 Нове звернення від @{message.from_user.username or user_id} (ID: {user_id})"
+        btn = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Прийняти", callback_data=f"accept_{user_id}"))
+        await bot.send_message(ADMIN_ID, text, reply_markup=btn)
 
-    # Повідомлення оператору
-    for op_id in OPERATORS:
-        await bot.send_message(
-            op_id,
-            f"🆕 <b>Нове звернення</b> 🆕\n\n"
-            f"👤 Ім'я: <b>{user_state[user_id]['name']}</b>\n"
-            f"📞 Телефон: <code>{user_state[user_id]['phone']}</code>\n\n"
-            f"📝 Питання:\n<blockquote>{user_state[user_id]['question']}</blockquote>\n\n"
-            "Натисніть на кнопку нижче, щоб прийняти розмову або завершити.",
-            parse_mode="HTML",
-            reply_markup=operator_keyboard()  # Кнопки для оператора
-        )
+    pending_requests[user_id].append(message.text)
 
-    await message.answer(
-        "⏳ Дякуємо за ваше звернення!\n"
-        "Будь ласка, зачекайте — ми під'єднуємо оператора...",
-        reply_markup=waiting_keyboard()
-    )
+    # Якщо оператор уже веде чат із цим користувачем — надсилаємо повідомлення
+    if any(op_id == user_id for op_id in active_chats.values()):
+        await bot.send_message(ADMIN_ID, f"💬 {user_id}: {message.text}")
 
-# Оператор приймає розмову
-@dp.message_handler(lambda message: message.text == "✅ Прийняти розмову" and message.from_user.id in OPERATORS)
-async def accept_chat(message: types.Message):
-    user_id = message.reply_to_message.from_user.id
-    active_chats[user_id] = {'operator_id': message.from_user.id}
-    await bot.send_message(
-        user_id,
-        f"💬 <b>Оператор TEMP:</b> Оператор прийняв вашу розмову. Ви можете почати спілкування.",
-        parse_mode="HTML",
-        reply_markup=waiting_keyboard()
-    )
-    await message.answer("✅ Ви прийняли розмову з користувачем.")
+@dp.callback_query_handler(lambda c: c.data.startswith("accept_"))
+async def accept_chat(callback: types.CallbackQuery, state: FSMContext):
+    user_id = int(callback.data.replace("accept_", ""))
+    active_chats[callback.from_user.id] = user_id
+    await bot.send_message(ADMIN_ID, f"🔓 Ви прийняли звернення від {user_id}. Тепер ви можете відповідати.")
+    await Dialog.chatting.set()
+    await state.update_data(user_id=user_id)
+    # Показати історію повідомлень
+    for msg in pending_requests.get(user_id, []):
+        await bot.send_message(ADMIN_ID, f"📨 {msg}")
+    await callback.answer()
 
-# Оператор завершить розмову
-@dp.message_handler(lambda message: message.text == "❌ Завершити розмову" and message.from_user.id in OPERATORS)
-async def end_chat_operator(message: types.Message):
-    user_id = message.reply_to_message.from_user.id
-    await bot.send_message(
-        user_id,
-        "⏹ Розмову завершено оператором. Дякуємо, що звернулися до нас!",
-        parse_mode="HTML",
-        reply_markup=start_keyboard()
-    )
-    active_chats.pop(user_id, None)
-    await message.answer("✅ Розмову завершено.")
+@dp.message_handler(lambda message: message.chat.id in OPERATORS, state=Dialog.chatting)
+async def handle_operator_message(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user_id = data.get("user_id")
+    if user_id:
+        await bot.send_message(user_id, f"👨‍💼 Оператор: {message.text}")
 
-# Користувач завершує розмову
-@dp.message_handler(lambda message: message.text == "🔚 Завершити розмову" and message.from_user.id not in OPERATORS)
-async def end_chat_user(message: types.Message):
-    user_id = message.from_user.id
+@dp.message_handler(commands=['end'], state=Dialog.chatting)
+async def end_chat(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user_id = data.get("user_id")
+    await bot.send_message(user_id, "✅ Дякуємо! Розмову завершено.")
+    await bot.send_message(message.chat.id, "🔚 Ви завершили чат.")
+    active_chats.pop(message.chat.id, None)
+    pending_requests.pop(user_id, None)
+    await state.finish()
 
-    if user_id in active_chats:
-        op_id = active_chats[user_id]['operator_id']
-        await bot.send_message(op_id, f"🔔 Користувач {user_state[user_id]['name']} завершив розмову.")
-        active_chats.pop(user_id, None)
-        await message.answer(
-            "✅ Розмову завершено. Натисніть /start, щоб почати нову консультацію.",
-            reply_markup=start_keyboard()
-        )
-    else:
-        await message.answer("❌ Розмову не можна завершити, оскільки вона ще не була прийнята оператором.")
-
-# Користувач пише оператору
-@dp.message_handler(lambda m: m.from_user.id in active_chats)
-async def user_message(message: types.Message):
-    op_id = active_chats[message.from_user.id]['operator_id']
-    await bot.send_message(
-        op_id,
-        f"👤 <b>{user_state[message.from_user.id]['name']}</b> пише:\n\n{message.text}",
-        parse_mode="HTML"
-    )
+    # Показати наступне звернення, якщо є
+    for uid in pending_requests:
+        if uid not in active_chats.values():
+            text = f"🆕 Нове звернення від ID: {uid}"
+            btn = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ Прийняти", callback_data=f"accept_{uid}"))
+            await bot.send_message(message.chat.id, text, reply_markup=btn)
+            break
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
