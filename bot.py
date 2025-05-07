@@ -15,7 +15,7 @@ import asyncio
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPERATORS = [5498505652]  # замість ADMIN_ID
+ADMIN_CHAT_ID = [5498505652]  # замість ADMIN_ID
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
